@@ -1,0 +1,43 @@
+data:
+  processed_dir: "~/MyData/esm2-residue_contact/processed"
+  mmseqs_tsv: "~/MyData/esm2-residue_contact/processed/mmseqs_results/result.tsv"
+  train_split: train
+  val_split: test
+
+loader:
+  num_workers: 8
+
+model:
+  esm_model: esm2_t30_150M_UR50D  # esm2_t30_150M_UR50D for 11Gb GPU. It would be  nice to try a esm2_t33_650M_UR50D for a better GPU
+  freeze_esm: true
+  use_esm_contact_head: true
+  cnn_channels: 96                # 64/96 GPU allowed with esm2_t30_150M_UR50D and max_len=512
+  cnn_depth: 8                    # 6/8 GPU allowed with esm2_t30_150M_UR50D and max_len=512
+  dropout: 0.1
+  top_k_templates: 5
+  distance_bins: [6.0, 8.0, 10.0, 14.0]  # 5 bins total: [0-6), [6-8), [8-10), [10-14), [14+)
+  sep_min: 6
+  max_len: 512  # 11Gb GPU: 512. Impossible with 640 768 1024
+  sep_min_eval: 6
+  max_len_eval: 640
+
+optim:
+  lr: 0.0001
+  weight_decay: 0.01
+  betas: [0.9, 0.98]
+  warmup_steps: 500
+  max_steps: 200_000
+  grad_accum: 1
+  batch_size: 1
+
+train:
+  log_every: 50
+  eval_every: 1000
+  save_every: 2000
+  out_dir: "~/MyTmp/esm2-residue_contact/outputs-v2"
+
+loss:
+  pos_weight: 3.
+
+eval:
+  split: test
