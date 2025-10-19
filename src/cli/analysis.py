@@ -31,7 +31,7 @@ def main(
 ):
     pred_dir = Path(pred_dir)
     out_dir = Path(out_dir)
-    (out_dir).makedirs_p()
+    out_dir.makedirs_p()
 
     # Load all NPZs
     npz_files = sorted(list(pred_dir.files("*.npz")))
@@ -59,7 +59,14 @@ def main(
         "medium": (12, 23),
         "long": (24, 10_000),
     }
-    range_metrics = {k: {"P@L": [], "P@L/2": [], "P@L/5": [], "AUPRC": []} for k in ranges}
+    range_metrics = {
+        k:
+            {"P@L": [],
+             "P@L/2": [],
+             "P@L/5": [],
+             "AUPRC": []}
+        for k in ranges
+    }
 
     # Global PR pools
     all_y = []
@@ -138,7 +145,11 @@ def main(
     # Range summaries
     range_summary = {}
     for key, d in range_metrics.items():
-        range_summary[key] = {k: (float(np.nanmean(v)) if len(v) else float('nan')) for k, v in d.items()}
+        range_summary[key] = {
+            k: (float(np.nanmean(v))
+                if len(v) else float('nan'))
+            for k, v in d.items()
+        }
     with open(out_dir / "range_metrics.json", "w") as f:
         json.dump(range_summary, f, indent=2)
 

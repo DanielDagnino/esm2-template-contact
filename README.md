@@ -52,7 +52,9 @@ sudo apt install mmseqs2
 
 ```bash
 mkvirtualenv protein -p python3.11
+
 python -m pip install --upgrade pip
+
 pip install -r requirements.txt
 ```
 
@@ -222,6 +224,14 @@ Long-range precision remains solid but shows room for improvement, suggesting fu
 ![Precision vs distance](/images/precision_prevalence_by_separation.png)
 
 Similar trends are observed across different sequence length, with a high correlation between precision and prevalence at each separation bin.
+
+## Example of contact map visualization
+
+Below is an example of a predicted protein contact map for a test case.
+The plot illustrates the predicted residue-residue contacts (blue) compared to the true contacts (gray), providing a visual measure of model performance.
+
+![7S22_model0_chainB.npz_L313.png](images/7S22_model0_chainB.npz_L313.png)
+
 
 ## Hardware requirements
 

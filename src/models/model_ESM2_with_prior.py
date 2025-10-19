@@ -16,7 +16,7 @@ class PairwiseProjector(Module):
         super().__init__()
 
         self.proj = nn.Sequential(
-            nn.Conv2d(3*d_model, out_ch, kernel_size=1),
+            nn.Conv2d(3 * d_model, out_ch, kernel_size=1),
             nn.GroupNorm(8, out_ch),
             nn.GELU(),
         )
@@ -34,12 +34,12 @@ class PairwiseProjector(Module):
             Tensor: (1, out_ch, L, L) pairwise features
         """
 
-        feats_i = feats.unsqueeze(1)                # (L,1,d)
-        feats_j = feats.unsqueeze(0)                # (1,L,d)
-        add = feats_i + feats_j                     # (L,L,d)
-        diff = (feats_i - feats_j).abs()            # (L,L,d)
-        had = feats_i * feats_j                     # (L,L,d)
-        out = torch.cat([add, diff, had], dim=-1)   # (L,L,3d)
+        feats_i = feats.unsqueeze(1)                # (L, 1, d)
+        feats_j = feats.unsqueeze(0)                # (1, L, d)
+        add = feats_i + feats_j                     # (L, L, d)
+        diff = (feats_i - feats_j).abs()            # (L, L, d)
+        had = feats_i * feats_j                     # (L, L, d)
+        out = torch.cat([add, diff, had], dim=-1)   # (L, L, 3d)
         out = rearrange(out, "i j c -> 1 c i j")    # (B=1, C, L, L)
         return self.proj(out)                       # (1, out_ch, L, L)
 
@@ -59,6 +59,7 @@ class ResBlock2D(Module):
             nn.GroupNorm(8, ch),
             nn.GELU(),
             nn.Dropout(pdrop),
+
             nn.Conv2d(ch, ch, kernel_size=3, padding=pad, dilation=dilation),
             nn.GroupNorm(8, ch),
         )
@@ -76,12 +77,14 @@ class ContactHead2D(Module):
             pdrop: float=0.1
     ):
         super().__init__()
+
         blocks = []
         dil_cycle = [1, 2, 4, 8]
         for i in range(depth):
             d = dil_cycle[i % len(dil_cycle)]
             blocks.append(ResBlock2D(ch, dilation=d, pdrop=pdrop))
         self.blocks = nn.Sequential(*blocks)
+
         self.out = nn.Conv2d(ch, 1, kernel_size=1)
 
     def forward(
@@ -117,21 +120,33 @@ class ESM2ContactWithTemplatePrior(Module):
         self.esm_model_name = esm_model
         self.use_esm_contact_head = use_esm_contact_head
 
+        # Load pretrained Fair-ESM model
         self.esm_model, self.alphabet = getattr(fair_esm.pretrained, esm_model)()
+
+        # Get batch converter for tokenizing sequences
         self.batch_converter = self.alphabet.get_batch_converter()
-        # pick the last layer of the model (e.g., 30 for t30_150M, 33 for t33_650M, etc.)
+
+        # Pick the last layer of the model (e.g., 30 for t30_150M, 33 for t33_650M, etc.)
         self.repr_layer = getattr(self.esm_model, "num_layers", 33)
+
+        # Embedding dimension of the ESM model
         d_model = self.esm_model.embed_dim
 
+        # Optionally freeze ESM parameters
         if freeze_esm:
             for p in self.esm_model.parameters():
                 p.requires_grad = False
 
+        # Pairwise projector from per-residue to pairwise features
         self.pairwise_projector = PairwiseProjector(d_model, cnn_channels)
-        extra_ch = 1 + num_dist_bins  # pri_contact + pri_bins
+
+        # Fusion layer to combine ESM pairwise features with prior contact/distance features
+        extra_ch = 1 + num_dist_bins  # pri_contact (1) + pri_bins (Bd)
         if use_esm_contact_head:
             extra_ch += 1
         self.fuse = nn.Conv2d(cnn_channels + extra_ch, cnn_channels, kernel_size=1)
+
+        # Contact prediction head
         self.head = ContactHead2D(cnn_channels, depth=cnn_depth, pdrop=dropout)
 
     @torch.no_grad()
@@ -148,8 +163,13 @@ class ESM2ContactWithTemplatePrior(Module):
             Tensor: (L, d) per-residue representations
         """
 
-        batch = [("protein", seq)]
-        _, _, toks = self.batch_converter(batch)  # Get token tensor from sequence
+        batch = [
+            ("protein", seq)
+        ]
+
+        # Get token tensor from sequence
+        _, _, toks = self.batch_converter(batch)  # (1, L+2) including BOS/EOS
+
         device = next(self.parameters()).device
         toks = toks.to(device)
 
@@ -159,9 +179,9 @@ class ESM2ContactWithTemplatePrior(Module):
             repr_layers=[self.repr_layer],
             return_contacts=False  # contacts separately below
         )
-        rep = out["representations"][self.repr_layer][0, 1:1 + len(seq), :]  # (L, d)
+        representations = out["representations"][self.repr_layer][0, 1:1 + len(seq), :]  # (L, d)
 
-        return rep
+        return representations
 
     def forward(
             self,
@@ -175,19 +195,22 @@ class ESM2ContactWithTemplatePrior(Module):
         Args:
             seq: amino acid sequence string
             pri_contact: (L, L) tensor of prior contact logits
-            pri_bins: (L, L, B) tensor of prior distance bin one-hot encodings
+            pri_bins: (L, L, Bd) tensor of prior distance bin (Bd) one-hot encodings
         Returns:
             Tensor: (L, L) contact logits
         """
 
-        H = self.esm_encode(seq)  # (L, d), (L, L) or None
-        L = H.size(0)
-        pair = self.pairwise_projector(H)  # (1, C, L, L)
+        # Encode with ESM to get per-residue features
+        #   tensor of per-residue features: (L, d)
+        #   if no contact head: (L, L) otherwise None
+        head_esm_out = self.esm_encode(seq)             # (L, d), ((L, L) or None if no contact head)
+        L = head_esm_out.size(0)
 
+        pair = self.pairwise_projector(head_esm_out)    # (1, C, L, L)
         feats = [
-            pair,
-            pri_contact.unsqueeze(0).unsqueeze(0),  # (1, 1, L, L)
-            pri_bins.permute(2, 0, 1).unsqueeze(0),  # (1, B, L, L)
+            pair,                                       # (1, C,  L, L)
+            pri_contact.unsqueeze(0).unsqueeze(0),      # (1, 1,  L, L)
+            pri_bins.permute(2, 0, 1).unsqueeze(0),     # (1, Bd, L, L)
         ]
 
         # Always provide the contact-head channel if the model was built to expect it
@@ -195,9 +218,9 @@ class ESM2ContactWithTemplatePrior(Module):
             contact_esm = pri_contact.new_zeros((L, L))  # pad zeros to keep channels consistent
             feats.append(contact_esm.unsqueeze(0).unsqueeze(0))  # (1, 1, L, L)
 
-        out = torch.cat(feats, dim=1)  # channels match fuse.in_channels now
-        out = self.fuse(out)
-        logits = self.head(out)[0]  # (L, L)
+        out = torch.cat(feats, dim=1)   # (1, C + extra_ch, L, L), where extra_ch=1+Bd+(1 if use_esm_contact_head else 0)
+        out = self.fuse(out)            # (1, C, L, L)
+        logits = self.head(out)[0]      # (L, L)
         logits = 0.5 * (logits + logits.T)  # symmetrize
         logits = logits - torch.diag(torch.diag(logits))  # zero out diagonal
         return logits

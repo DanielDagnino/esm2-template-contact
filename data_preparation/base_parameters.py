@@ -8,6 +8,7 @@ MIN_LEN_SEARCH = 2
 THREE_TO_ONE = {'ALA': 'A', 'ARG': 'R', 'ASP': 'D', 'CYS': 'C', 'CYX': 'C', 'GLN': 'Q', 'GLU': 'E', 'GLY': 'G',
                 'HIS': 'H', 'HIE': 'H', 'ILE': 'I', 'LEU': 'L', 'LYS': 'K', 'MET': 'M', 'ASN': 'N', 'PHE': 'F',
                 'PRO': 'P', 'SEC': 'U', 'SER': 'S', 'THR': 'T', 'TRP': 'W', 'TYR': 'Y', 'VAL': 'V'}
+print(f'standard amino acids = {len(set(THREE_TO_ONE.values()))}')
 
 # Define unknown amino acid representation
 UNKNOWN_AA = 'X'
@@ -34,4 +35,28 @@ MMSEQS_COLUMNS = [
     "pident"  # the percent identity of the alignment
 ]
 
-print(f'standard amino acids + SEC = {len(THREE_TO_ONE)}')
+# Mapping from one-letter amino acid codes to full names
+AMINO_ACID_MAP = {
+    "A": "Alanine",
+    "C": "Cysteine",
+    "D": "Aspartic acid",
+    "E": "Glutamic acid",
+    "F": "Phenylalanine",
+    "G": "Glycine",
+    "H": "Histidine",
+    "I": "Isoleucine",
+    "K": "Lysine",
+    "L": "Leucine",
+    "M": "Methionine",
+    "N": "Asparagine",
+    "P": "Proline",
+    "Q": "Glutamine",
+    "R": "Arginine",
+    "S": "Serine",
+    "T": "Threonine",
+    "V": "Valine",
+    "W": "Tryptophan",
+    "Y": "Tyrosine",
+    "O": "Pyrrolysine",
+}
+print(f"Amino acid map not in THREE_TO_ONE = {set(AMINO_ACID_MAP.keys()) - set(THREE_TO_ONE.values())}")
